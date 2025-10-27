@@ -1,0 +1,475 @@
+<!-- === Diamond Cut Grading Tool (IGI-aligned) === -->
+
+<form>
+  <label>
+    Diameter
+    <input type="number" id="diameter" placeholder="mm" step="0.01" value="6.5">
+  </label>
+
+  <label>
+    Total depth
+    <input type="number" id="totalDepth" placeholder="%" step="0.1">
+    <span class="grade" id="gradeTotalDepth"></span>
+  </label>
+
+  <label>
+    Table size
+    <input type="number" id="tableSize" placeholder="%" step="0.1" value="57">
+    <span class="grade" id="gradeTable"></span>
+  </label>
+
+  <label>
+    Crown height
+    <input type="number" id="crownHeight" placeholder="%" step="0.1" value="15.0">
+    <span class="grade" id="gradeCrownPct"></span>
+  </label>
+
+  <label>
+    Girdle
+    <input type="number" id="girdle" placeholder="%" step="0.1" value="3.5">
+    <span class="grade" id="gradeGirdle"></span>
+  </label>
+
+  <label>
+    Pavilion depth
+    <input type="number" id="pavilionDepth" placeholder="%" step="0.1" value="43.0">
+    <span class="grade" id="gradePavPct"></span>
+  </label>
+
+  <label>
+    Crown angle
+    <input type="number" id="crownAngle" placeholder="°" step="0.1">
+    <span class="grade" id="gradeCrownAng"></span>
+  </label>
+
+  <label>
+    Pavilion angle
+    <input type="number" id="pavilionAngle" placeholder="°" step="0.1">
+    <span class="grade" id="gradePavAng"></span>
+  </label>
+</form>
+
+<!-- Final grade display -->
+<div id="finalGrade" style="margin-top:12px; font-weight:bold; font-size:16px;"></div>
+
+<!-- SVG Preview -->
+<svg id="preview" width="360" height="260" viewBox="0 0 360 260">
+  <rect x="0" y="0" width="360" height="260" fill="#fff"/>
+  <path id="diamondPath" d="" fill="#f7fbff" stroke="#2a6f97" stroke-width="2"/>
+  <line id="tableLine" x1="0" y1="0" x2="0" y2="0" stroke="#2a6f97" stroke-width="3"/>
+  <text id="crownLabel" x="10" y="20" font-size="11" fill="#555"></text>
+  <text id="pavilionLabel" x="10" y="40" font-size="11" fill="#555"></text>
+</svg>
+
+<style>
+form { 
+  display: grid; 
+  grid-template-columns: repeat(4, 1fr); /* default: 4 columns */
+  gap: 12px; 
+  max-width: 720px; 
+  font-family: system-ui, sans-serif; 
+  margin-bottom: 12px;
+}
+
+label { 
+  display: flex; 
+  flex-direction: column;
+  gap: 4px; 
+  font-size: 14px; 
+}
+
+input { 
+  padding: 6px 8px; 
+  border: 1px solid #ccc; 
+  border-radius: 4px; 
+}
+
+.grade {
+  font-weight: bold;
+  font-size: 13px;
+  color: #2a6f97;
+}
+
+/* === Responsive breakpoints === */
+@media (max-width: 900px) {
+  form {
+    grid-template-columns: repeat(2, 1fr); /* 2 columns on tablets */
+    max-width: 500px;
+  }
+}
+
+@media (max-width: 500px) {
+  form {
+    grid-template-columns: 1fr; /* single column on mobile */
+    max-width: 100%;
+  }
+}
+
+/* SVG preview box */
+svg { 
+  border: 1px solid #e5e5e5; 
+  border-radius: 6px; 
+  background: #fff; 
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+  margin-top: 16px;
+}
+</style>
+
+<script>
+/* === Diamond Cut Grading Tool (IGI-aligned) === */
+/* Sections:
+   1) IGI ranges with split bands + Ideal
+   2) Grading helpers + color mapping
+   3) Bidirectional helpers (angles ↔ percents, total depth)
+   4) SVG drawing logic
+   5) Event wiring & initialization
+*/
+
+/* 1) IGI ranges with split bands + Ideal (RBC) */
+// Each grade is an array of [min, max] ranges.
+// Use .some() to check if a value falls into any of them.
+// Ideal = tight sweet-spot within Excellent.
+
+const depthRanges = {
+  ideal:     [[58.5, 62.5]],
+  excellent: [[58, 58.49], [62.51, 63.5]],
+  veryGood:  [[55, 57.99], [63.51, 65.5]],
+  good:      [[53, 54.99], [65.51, 69]],
+};
+
+const tableRanges = {
+  ideal:     [[53.5, 59.5]],
+  excellent: [[53, 53.49], [59.51, 63]],
+  veryGood:  [[52, 52.99], [63.01, 66]],
+  good:      [[50, 51.99], [66.01, 70]],
+};
+
+const crownPctRanges = {
+  ideal:     [[13, 16]],
+  excellent: [[12, 12.99], [16.01, 16.5]],
+  veryGood:  [[10, 11.99], [16.51, 17.5]],
+  good:      [[8.5, 9.99], [17.51, 19]],
+};
+
+const crownAngRanges = {
+  ideal:     [[33, 36]],
+  excellent: [[31.5, 32.99], [36.01, 36.5]],
+  veryGood:  [[28.5, 31.49], [36.51, 38]],
+  good:      [[26, 28.49], [38.01, 40]],
+};
+
+const pavPctRanges = {
+  ideal:     [[42.5, 44]],
+  excellent: [[42, 42.49], [44.01, 44.5]],
+  veryGood:  [[41.5, 41.99], [44.51, 45]],
+  good:      [[41, 41.4], [45.01, 46.5]],
+};
+
+const pavAngRanges = {
+  ideal:     [[40.5, 41.3]],
+  excellent: [[40, 40.49], [41.31, 41.7]],
+  veryGood:  [[39.7, 39.99], [41.71, 42.3]],
+  good:      [[39.4, 39.69], [42.31, 42.9]],
+};
+
+// Girdle is qualitative in IGI; using % thickness approximation.
+const girdleRanges = {
+  ideal:     [[2.0, 4.2]],   // Thin to Medium
+  excellent: [[1.6, 1.99], [4.21, 4.7]],   // Thin to Slightly Thick
+  veryGood:  [[0.3, 1.59], [4.71, 6.0]],   // Slightly wider
+  good:      [[0.2, 0.29], [6.01, 8.0]],   // Up to Thick
+};
+
+/* 2) Grading helpers + color mapping */
+
+const gradeOrder = ["Ideal","Excellent","Very Good","Good","Fair/Poor"];
+
+function colorForGrade(grade) {
+  switch(grade) {
+    case "Ideal": return "darkgreen";
+    case "Excellent": return "green";
+    case "Very Good": return "goldenrod";
+    case "Good": return "orange";
+    case "Fair/Poor": return "red";
+    default: return "black";
+  }
+}
+
+function gradeValue(val, ranges) {
+  if (val == null || isNaN(val)) return "";
+  const inRange = (v, r) => v >= r[0] && v <= r[1];
+
+  if (ranges.ideal && ranges.ideal.some(r => inRange(val, r))) return "Ideal";
+  if (ranges.excellent && ranges.excellent.some(r => inRange(val, r))) return "Excellent";
+  if (ranges.veryGood && ranges.veryGood.some(r => inRange(val, r))) return "Very Good";
+  if (ranges.good && ranges.good.some(r => inRange(val, r))) return "Good";
+  return "Fair/Poor";
+}
+
+function updateGrades() {
+  const total = parseFloat(totalDepth.value);
+  const table = parseFloat(tableSize.value);
+  const crownPct = parseFloat(crownHeight.value);
+  const crownAng = parseFloat(crownAngle.value);
+  const pavPct = parseFloat(pavilionDepth.value);
+  const pavAng = parseFloat(pavilionAngle.value);
+  const gird = parseFloat(girdle.value);
+
+  const gTotal = gradeValue(total, depthRanges);
+  const gTable = gradeValue(table, tableRanges);
+  const gCrownPct = gradeValue(crownPct, crownPctRanges);
+  const gCrownAng = gradeValue(crownAng, crownAngRanges);
+  const gPavPct = gradeValue(pavPct, pavPctRanges);
+  const gPavAng = gradeValue(pavAng, pavAngRanges);
+  const gGirdle = gradeValue(gird, girdleRanges);
+
+  function setGrade(el, grade) {
+    el.textContent = grade;
+    el.style.color = colorForGrade(grade);
+  }
+
+  setGrade(gradeTotalDepth, gTotal);
+  setGrade(gradeTable, gTable);
+  setGrade(gradeCrownPct, gCrownPct);
+  setGrade(gradeCrownAng, gCrownAng);
+  setGrade(gradePavPct, gPavPct);
+  setGrade(gradePavAng, gPavAng);
+  setGrade(gradeGirdle, gGirdle);
+
+  const allGrades = [gTotal,gTable,gCrownPct,gCrownAng,gPavPct,gPavAng,gGirdle].filter(Boolean);
+  let worst = "Ideal";
+  allGrades.forEach(g => {
+    if (gradeOrder.indexOf(g) > gradeOrder.indexOf(worst)) worst = g;
+  });
+
+  finalGrade.textContent = "Final Cut Grade: " + worst;
+  finalGrade.style.color = colorForGrade(worst);
+}
+
+/* 3) Bidirectional helpers (angles ↔ percents, total depth) */
+
+let isUpdating = false;
+
+// Total depth = crown% + pavilion% + girdle%
+function updateTotalDepth() {
+  if (isUpdating) return;
+  isUpdating = true;
+
+  const c = parseFloat(crownHeight.value) || 0;
+  const p = parseFloat(pavilionDepth.value) || 0;
+  const g = parseFloat(girdle.value) || 0;
+
+  totalDepth.value = (c + p + g).toFixed(1);
+
+  isUpdating = false;
+}
+
+// Rescale crown/pavilion/girdle to match a typed total depth (keeps ratios)
+function updatePartsFromTotal() {
+  if (isUpdating) return;
+  isUpdating = true;
+
+  const t = parseFloat(totalDepth.value) || 0;
+  const c = parseFloat(crownHeight.value) || 0;
+  const p = parseFloat(pavilionDepth.value) || 0;
+  const g = parseFloat(girdle.value) || 0;
+  const sum = c + p + g;
+
+  if (sum > 0) {
+    const scale = t / sum;
+    crownHeight.value = (c * scale).toFixed(1);
+    pavilionDepth.value = (p * scale).toFixed(1);
+    girdle.value = (g * scale).toFixed(1);
+  }
+
+  isUpdating = false;
+}
+
+// Forward: percents → angles
+function updateAngles() {
+  if (isUpdating) return;
+  isUpdating = true;
+
+  const d = parseFloat(diameter.value) || 0;
+  const tPct = parseFloat(tableSize.value) || 0;
+  const cPct = parseFloat(crownHeight.value) || 0;
+  const pPct = parseFloat(pavilionDepth.value) || 0;
+
+  if (d > 0) {
+    const hC = (cPct / 100) * d;
+    const hP = (pPct / 100) * d;
+    const xC = d / 2 - (tPct / 100) * (d / 2); // horizontal run from table edge to girdle
+
+    if (xC > 0) {
+      crownAngle.value = (Math.atan(hC / xC) * 180 / Math.PI).toFixed(1);
+    }
+    pavilionAngle.value = (Math.atan(hP / (d / 2)) * 180 / Math.PI).toFixed(1);
+  }
+
+  isUpdating = false;
+}
+
+// Inverse: crown angle → crown height %
+function updateFromCrownAngle() {
+  if (isUpdating) return;
+  isUpdating = true;
+
+  const d = parseFloat(diameter.value) || 0;
+  const tPct = parseFloat(tableSize.value) || 0;
+  const angleDeg = parseFloat(crownAngle.value);
+  const angle = isNaN(angleDeg) ? NaN : angleDeg * Math.PI / 180;
+
+  if (d > 0 && angle > 0) {
+    const xC = d / 2 - (tPct / 100) * (d / 2);
+    if (xC > 0) {
+      const hC = Math.tan(angle) * xC;
+      crownHeight.value = ((hC / d) * 100).toFixed(1);
+      updateTotalDepth();
+    }
+  }
+
+  isUpdating = false;
+}
+
+// Inverse: pavilion angle → pavilion depth %
+function updateFromPavilionAngle() {
+  if (isUpdating) return;
+  isUpdating = true;
+
+  const d = parseFloat(diameter.value) || 0;
+  const angleDeg = parseFloat(pavilionAngle.value);
+  const angle = isNaN(angleDeg) ? NaN : angleDeg * Math.PI / 180;
+
+  if (d > 0 && angle > 0) {
+    const hP = Math.tan(angle) * (d / 2);
+    pavilionDepth.value = ((hP / d) * 100).toFixed(1);
+    updateTotalDepth();
+  }
+
+  isUpdating = false;
+}
+
+/* 4) SVG drawing logic (stylized cross-section) */
+
+function draw() {
+  const d = parseFloat(diameter.value) || 0;
+  const tPct = parseFloat(tableSize.value) || 0;
+  const cPct = parseFloat(crownHeight.value) || 0;
+  const pPct = parseFloat(pavilionDepth.value) || 0;
+  const gPct = parseFloat(girdle.value) || 0;
+
+  const s = 20;          // scale: px per mm
+  const cx = 180;        // center x
+  const gy = 130;        // girdle midline y
+
+  if (d <= 0) {
+    diamondPath.setAttribute("d", "");
+    return;
+  }
+
+  // Convert proportions into pixel dimensions
+  const R = (d / 2) * s;
+  const tableHalf = (tPct / 100) * R;
+  const hCpx = ((cPct / 100) * d) * s;
+  const hPpx = ((pPct / 100) * d) * s;
+  const gThickPx = ((gPct / 100) * d) * s;
+
+  // Key Y positions
+  const yTable = gy - gThickPx/2 - hCpx;
+  const yGirdleTop = gy - gThickPx/2;
+  const yGirdleBot = gy + gThickPx/2;
+  const yCulet = yGirdleBot + hPpx;
+
+  // X positions
+  const xLeft = cx - R;
+  const xRight = cx + R;
+  const xTableL = cx - tableHalf;
+  const xTableR = cx + tableHalf;
+
+  // Crown mid facet
+  const crownMidY = (yTable + yGirdleTop) / 2;
+  const crownMidXLeft = (xTableL + xLeft) / 2;
+  const crownMidXRight = (xTableR + xRight) / 2;
+
+  // Pavilion mid facet
+  const pavMidY = (yGirdleBot + yCulet) / 2;
+  const pavMidXLeft = (xLeft + cx) / 2;
+  const pavMidXRight = (xRight + cx) / 2;
+
+  // Build path with facets
+  const dPath = [
+    `M ${xTableL} ${yTable}`,          // left table edge
+    `L ${crownMidXLeft} ${crownMidY}`, // crown mid facet
+    `L ${xLeft} ${yGirdleTop}`,        // girdle top
+    `L ${xLeft} ${yGirdleBot}`,        // girdle bottom
+    `L ${pavMidXLeft} ${pavMidY}`,     // pavilion mid facet
+    `L ${cx} ${yCulet}`,               // culet
+    `L ${pavMidXRight} ${pavMidY}`,    // pavilion mid facet
+    `L ${xRight} ${yGirdleBot}`,       // girdle bottom
+    `L ${xRight} ${yGirdleTop}`,       // girdle top
+    `L ${crownMidXRight} ${crownMidY}`,// crown mid facet
+    `L ${xTableR} ${yTable}`,          // right table edge
+    `Z`
+  ].join(" ");
+
+  diamondPath.setAttribute("d", dPath);
+
+  // Table line
+  tableLine.setAttribute("x1", xTableL);
+  tableLine.setAttribute("y1", yTable);
+  tableLine.setAttribute("x2", xTableR);
+  tableLine.setAttribute("y2", yTable);
+
+  // Labels
+  crownLabel.textContent = `Crown angle: ${crownAngle.value || "–"}°`;
+  pavilionLabel.textContent = `Pavilion angle: ${pavilionAngle.value || "–"}°`;
+}
+
+/* 5) Event wiring & initialization */
+
+// Local wiring for helpers to keep values synced
+[crownHeight, pavilionDepth, girdle].forEach(input => {
+  input.addEventListener("input", () => {
+    updateTotalDepth();
+    updateAngles();
+    updateGrades();
+    draw();
+  });
+});
+
+// When total depth changes, rescale parts and resync angles/grades/drawing
+totalDepth.addEventListener("input", () => {
+  updatePartsFromTotal();
+  updateAngles();
+  updateGrades();
+  draw();
+});
+
+// Diameter or table affect angle baselines
+[diameter, tableSize].forEach(input => {
+  input.addEventListener("input", () => {
+    updateAngles();
+    updateGrades();
+    draw();
+  });
+});
+
+// Angle fields are inverse inputs → back-calc percents
+crownAngle.addEventListener("input", () => {
+  updateFromCrownAngle();
+  updateGrades();
+  draw();
+});
+
+pavilionAngle.addEventListener("input", () => {
+  updateFromPavilionAngle();
+  updateGrades();
+  draw();
+});
+
+// Initial run
+updateTotalDepth();
+updateAngles();
+updateGrades();
+draw();
+</script>
