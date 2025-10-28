@@ -60,6 +60,9 @@
   <text id="pavilionLabel" x="10" y="40" font-size="11" fill="#555"></text>
 </svg>
 
+<!-- Add this in your <head> -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
 <style>
 form { 
   display: grid; 
@@ -68,6 +71,7 @@ form {
   max-width: 720px; 
   font-family: system-ui, sans-serif; 
   margin-bottom: 12px;
+  width: 100%; /* allow shrinking on small screens */
 }
 
 label { 
@@ -90,17 +94,28 @@ input {
 }
 
 /* === Responsive breakpoints === */
-@media (max-width: 900px) {
+@media (max-width: 1024px) {
+  form {
+    grid-template-columns: repeat(3, 1fr); /* 3 columns on small laptops */
+    max-width: 600px;
+  }
+}
+
+@media (max-width: 768px) {
   form {
     grid-template-columns: repeat(2, 1fr); /* 2 columns on tablets */
     max-width: 500px;
   }
 }
 
-@media (max-width: 500px) {
+@media (max-width: 480px) {
   form {
     grid-template-columns: 1fr; /* single column on mobile */
     max-width: 100%;
+  }
+  input {
+    font-size: 16px; /* larger tap targets for mobile */
+    padding: 10px;
   }
 }
 
@@ -111,9 +126,11 @@ svg {
   background: #fff; 
   box-shadow: 0 1px 2px rgba(0,0,0,0.04);
   margin-top: 16px;
+  width: 100%;       /* scale with container */
+  height: auto;      /* maintain aspect ratio */
+  max-width: 360px;  /* don’t blow up too large */
 }
 </style>
-
 <script>
 /* === Diamond Cut Grading Tool (IGI-aligned) === */
 /* Sections:
@@ -473,3 +490,4 @@ updateGrades();
 draw();
 
 </script>
+
